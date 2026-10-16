@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BridgeSpeak — Assistive AI Communication (Local Model)</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --deaf-bg: #0f1923; --deaf-panel: #162030; --deaf-accent: #38bdf8; --deaf-accent2: #0ea5e9;
+    --hearing-bg: #1a1208; --hearing-panel: #241a0a; --hearing-accent: #f59e0b; --hearing-accent2: #d97706;
+    --text-primary: #f0f4f8; --text-muted: #7a8a9a; --urgent: #ef4444; --urgent-bg: #3f1212;
+    --border-radius: 16px; --msg-radius: 18px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: #0a0f14; color: var(--text-primary); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: #0d1520; border-bottom: 1px solid #1e2d3d; z-index: 10; flex-shrink: 0; }
+  .logo { font-family: 'DM Serif Display', serif; font-size: 1.5rem; letter-spacing: -0.5px; background: linear-gradient(135deg, var(--deaf-accent), var(--hearing-accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .logo span { font-style: italic; }
+  .header-controls { display: flex; align-items: center; gap: 12px; }
+  .context-select { background: #1a2535; border: 1px solid #2a3a4a; color: var(--text-primary); padding: 7px 14px; border-radius: 10px; font-family: 'DM Sans', sans-serif; font-size: 0.85rem; cursor: pointer; outline: none; }
+  .context-select:focus { border-color: var(--deaf-accent); }
+  .lang-toggle { display: flex; align-items: center; gap: 8px; background: #1a2535; border: 1px solid #2a3a4a; padding: 7px 14px; border-radius: 10px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; color: var(--text-primary); }
+  .lang-toggle.active { border-color: var(--hearing-accent); color: var(--hearing-accent); }
+  .model-badge { background: #1a2535; border: 1px solid #2a3a4a; padding: 7px 14px; border-radius: 10px; font-size: 0.78rem; color: var(--text-muted); }
+  .main { display: flex; flex: 1; overflow: hidden; }
+  .panel { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel-deaf { background: var(--deaf-bg); border-right: 1px solid #1e2d3d; }
+  .panel-hearing { background: var(--hearing-bg); }
+  .panel-header { padding: 16px 20px 12px; border-bottom: 1px solid #1e2d3d; flex-shrink: 0; display: flex; justify-content: space-between; align-items: flex-start; }
+  .panel-deaf .panel-header { border-color: #1a2d3d; }
+  .panel-hearing .panel-header { border-color: #2d1e0a; }
+  .panel-title { font-family: 'DM Serif Display', serif; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+  .panel-deaf .panel-title { color: var(--deaf-accent); }
+  .panel-hearing .panel-title { color: var(--hearing-accent); }
+  .panel-subtitle { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+  .clear-btn { background: none; border: 1px solid #2a3a4a; color: var(--text-muted); font-size: 0.75rem; padding: 4px 10px; border-radius: 8px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+  .clear-btn:hover { border-color: var(--urgent); color: var(--urgent); }
+  .messages { flex: 1; overflow-y: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .panel-deaf .messages::-webkit-scrollbar-thumb { background: #1e3a5a; border-radius: 4px; }
+  .panel-hearing .messages::-webkit-scrollbar-thumb { background: #3a2a0a; border-radius: 4px; }
+  .msg { display: flex; flex-direction: column; gap: 4px; animation: msgIn 0.3s ease; }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .msg-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 4px; }
+  .msg-bubble { padding: 12px 16px; border-radius: var(--msg-radius); font-size: 0.9rem; line-height: 1.55; max-width: 95%; }
+  .msg-input-raw .msg-bubble { background: #1a2d3d; color: #94b8cc; border-radius: var(--msg-radius) var(--msg-radius) var(--msg-radius) 4px; font-style: italic; font-size: 0.82rem; }
+  .msg-output .msg-bubble { background: linear-gradient(135deg, #1a3a52, #163045); color: var(--text-primary); border: 1px solid #2a4a6a; border-radius: 4px var(--msg-radius) var(--msg-radius) var(--msg-radius); }
+  .msg-output.urgent .msg-bubble { background: var(--urgent-bg); border-color: var(--urgent); color: #fca5a5; }
+  .urgent-badge { display: inline-block; background: var(--urgent); color: white; font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .msg-hearing-input .msg-bubble { background: #2d1e0a; color: #c8a060; border-radius: var(--msg-radius) var(--msg-radius) var(--msg-radius) 4px; font-size: 0.82rem; }
+  .msg-hearing-output .msg-bubble { background: linear-gradient(135deg, #2a1e08, #201608); color: var(--text-primary); border: 1px solid #4a3010; border-radius: 4px var(--msg-radius) var(--msg-radius) var(--msg-radius); }
+  .msg-hearing-output .msg-bubble { white-space: pre-line; font-size: 1rem; }
+  .msg-hearing-output.urgent .msg-bubble { background: var(--urgent-bg); border-color: var(--urgent); color: #fca5a5; }
+  .msg-keywords { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px; }
+  .msg-keywords span { background: #3a2a0a; border: 1px solid #5a4010; color: #f5c56b; font-size: 0.72rem; font-weight: 600; padding: 2px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .msg-hindi .msg-bubble { background: #1f1a0a; border: 1px dashed #4a3010; color: #d4a85a; font-size: 0.88rem; }
+  .msg-ml-tag .msg-bubble { background: #1a2a1a; border: 1px dashed #2a4a2a; color: #4ade80; font-size: 0.75rem; font-family: monospace; padding: 6px 12px; }
+  .typing-indicator { display: none; align-items: center; gap: 6px; padding: 8px 4px; color: var(--text-muted); font-size: 0.8rem; }
+  .typing-indicator.visible { display: flex; }
+  .typing-dots { display: flex; gap: 3px; }
+  .typing-dots span { width: 5px; height: 5px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.2s infinite; }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
+  .input-area { padding: 14px 16px; border-top: 1px solid; flex-shrink: 0; }
+  .panel-deaf .input-area { border-color: #1a2d3d; background: #0f1923; }
+  .panel-hearing .input-area { border-color: #2d1e0a; background: #1a1208; }
+  .input-hint { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 8px; }
+  .input-row { display: flex; gap: 10px; align-items: flex-end; }
+  textarea { flex: 1; background: #1a2535; border: 1px solid #2a3a4a; color: var(--text-primary); padding: 12px 14px; border-radius: 12px; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; resize: none; min-height: 48px; max-height: 120px; outline: none; line-height: 1.4; }
+  .panel-hearing textarea { background: #2a1e0a; border-color: #3a2a0a; }
+  textarea:focus { border-color: var(--deaf-accent); }
+  .panel-hearing textarea:focus { border-color: var(--hearing-accent); }
+  .send-btn { background: linear-gradient(135deg, var(--deaf-accent2), #0284c7); border: none; color: #fff; width: 48px; height: 48px; border-radius: 12px; cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; transition: opacity 0.2s; flex-shrink: 0; }
+  .panel-hearing .send-btn { background: linear-gradient(135deg, var(--hearing-accent2), #b45309); }
+  .send-btn:hover { opacity: 0.88; }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); text-align: center; padding: 20px; gap: 8px; }
+  .empty-icon { font-size: 2rem; opacity: 0.4; }
+  .empty-text { font-size: 0.82rem; max-width: 220px; line-height: 1.5; }
+  .status-bar { padding: 6px 16px; font-size: 0.72rem; color: var(--text-muted); background: #0a1018; border-top: 1px solid #1e2d3d; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Bridge<span>Speak</span></div>
+  <div class="header-controls">
+    <select class="context-select" id="contextSelect">
+      <option value="general">🌐 General</option>
+      <option value="doctor">🏥 Doctor / Hospital</option>
+      <option value="friend">👥 Friend / Casual</option>
+      <option value="office">💼 Office / Formal</option>
+      <option value="emergency">🚨 Emergency</option>
+    </select>
+    <button class="lang-toggle" id="langToggle" onclick="toggleLang()">🌏 Hindi Output</button>
+    <div class="model-badge" id="modelBadge">🧠 BiLSTM: Loading…</div>
+  </div>
+</header>
+<div class="main">
+  <div class="panel panel-deaf">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">👂 → 🗣️  Deaf / Mute User</div>
+        <div class="panel-subtitle">Type keywords · Local model classifies & reconstructs</div>
+      </div>
+      <button class="clear-btn" onclick="clearSide('deaf')">Clear</button>
+    </div>
+    <div class="messages" id="deafMessages">
+      <div class="empty-state" id="deafEmpty">
+        <div class="empty-icon">⌨️</div>
+        <div class="empty-text">Type short keywords or phrases.<br/>The local BiLSTM model will classify urgency & intent and build a natural sentence.</div>
+      </div>
+    </div>
+    <div class="typing-indicator" id="deafTyping"><div class="typing-dots"><span></span><span></span><span></span></div> Processing…</div>
+    <div class="input-area">
+      <div class="input-hint">e.g. “need water”, “chest pain bad”, “hello morning”</div>
+      <div class="input-row">
+        <textarea id="deafInput" rows="1" placeholder="Type keywords…" onkeydown="handleKey(event,'deaf')"></textarea>
+        <button class="send-btn" id="deafSendBtn" onclick="sendDeaf()">➤</button>
+      </div>
+    </div>
+  </div>
+  <div class="panel panel-hearing">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">🗣️ → 👂  Hearing Person</div>
+        <div class="panel-subtitle">Type a reply · simplified for the deaf user</div>
+      </div>
+      <button class="clear-btn" onclick="clearSide('hearing')">Clear</button>
+    </div>
+    <div class="messages" id="hearingMessages">
+      <div class="empty-state" id="hearingEmpty">
+        <div class="empty-icon">💬</div>
+        <div class="empty-text">Type what the hearing person says.<br/>It will be simplified into short, clear text.</div>
+      </div>
+    </div>
+    <div class="typing-indicator" id="hearingTyping"><div class="typing-dots"><span></span><span></span><span></span></div> Simplifying…</div>
+    <div class="input-area">
+      <div class="input-hint">Plain English reply from the hearing person</div>
+      <div class="input-row">
+        <textarea id="hearingInput" rows="1" placeholder="Type reply…" onkeydown="handleKey(event,'hearing')"></textarea>
+        <button class="send-btn" id="hearingSendBtn" onclick="sendHearing()">➤</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="status-bar" id="statusBar">Fully offline · Local BiLSTM model only · No external API</div>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script>
+let hindiEnabled = false;
+let conversationHistory = [];
+let biLSTMModel = null;
+let modelMetadata = null;
+let modelLoaded = false;
+
+const EMERGENCY_KEYWORDS = new Set([
+  'fire','earthquake','flood','drowning','robbery','theft','attack','threat',
+  'unsafe','ambulance','unconscious','seizure','overdose','bleeding','bleed','gas','smoke',
+  'leak','shock','electric','accident','police','emergency','danger',
+  'cannot','breathe','breathing','chest','heart','serious','immediately'
+]);
+const CRITICAL_KEYWORDS = new Set([
+  'fire','smoke','gas','leak','flood','drowning','earthquake','robbery','attack','threat','unconscious',
+  'seizure','overdose','bleeding','bleed','accident','ambulance','emergency','danger','shock'
+]);
+const MILD_MODIFIERS = new Set([
+  'mild','slight','small','little','low','not','ok','normal','later','tomorrow',
+  'can','fine','good','only'
+]);
+
+const HINDI_GLOSS = {
+  'hello':'नमस्ते','good morning':'सुप्रभात','thank you':'धन्यवाद','sorry':'माफ़ कीजिए',
+  'please':'कृपया','help':'मदद','water':'पानी','food':'खाना','bathroom':'शौचालय',
+  'doctor':'डॉक्टर','pain':'दर्द','medicine':'दवा','yes':'हाँ','no':'नहीं','wait':'रुकिए',
+  'goodbye':'अलविदा','need':'चाहिए','want':'चाहते हैं','ambulance':'एम्बुलेंस','police':'पुलिस',
+  'fire':'आग','emergency':'आपातकाल','hospital':'अस्पताल','hurt':'चोट',
+  'chest pain':'सीने में दर्द','cannot breathe':'साँस नहीं ले पा रहा/रही'
+};
+
+const TEMPLATES = {
+  social: {
+    greet: ['Hello.','Good morning.','Hi, nice to meet you.'],
+    thanks: ['Thank you.','Thank you very much.'],
+    bye: ['Goodbye.','See you later.','Bye.'],
+    agree: ['Yes, I agree.','Yes.'],
+    disagree: ['No, I disagree.','No.'],
+    wait: ['Please wait a moment.','One moment, please.'],
+    sorry: ['I am sorry.','Excuse me.'],
+    general: ['I understand.','Okay.','I am fine.']
+  },
+  request: {
+    water: ['I need water, please.','Could I have some water?'],
+    food: ['I am hungry. I need food, please.','Could I have something to eat?'],
+    bathroom: ['I need to use the bathroom, please.'],
+    sit: ['I would like to sit down, please.','Could I have a chair?'],
+    rest: ['I need to rest, please.'],
+    help: ['Could you help me, please?','I need some help.'],
+    open: ['Could you open the door / window, please?'],
+    close: ['Could you close the door / window, please?'],
+    phone: ['I need my phone / charger, please.'],
+    write: ['Could you write that down for me, please?'],
+    appointment: ['I need to schedule an appointment, please.'],
+    general: ['I need assistance with this, please.']
+  },
+  medical: {
+    mild: ['I have mild discomfort.','I feel a little unwell.','I have a slight pain.'],
+    medicine: ['I need my medicine / a prescription refill, please.'],
+    doctor: ['I would like to see a doctor, please.','I need a medical check-up.'],
+    urgent_chest: ['I have severe chest pain. Please get help immediately.'],
+    urgent_breathe: ['I cannot breathe properly. This is urgent.'],
+    urgent_bleed: ['I am bleeding heavily. Please call for help.'],
+    urgent_unconscious: ['Someone is unconscious. Call an ambulance now.'],
+    urgent_seizure: ['There is a seizure. Call emergency services now.'],
+    urgent_general: ['This is a serious medical emergency. Please get help now.'],
+    general: ['I have a medical concern I would like to discuss.']
+  },
+  emergency: {
+    fire: ['There is a fire! Please get help immediately.'],
+    flood: ['There is flooding / rising water. This is an emergency.'],
+    gas: ['I smell gas. There may be a leak. Evacuate and call for help.'],
+    attack: ['I am in danger / under attack. Call the police now.'],
+    accident: ['There has been an accident. People are hurt. Call emergency services.'],
+    police: ['Please call the police. This is an emergency.'],
+    ambulance: ['Please call an ambulance immediately.'],
+    general: ['This is an emergency. Please get help right now.']
+  }
+};
+
+window.onload = async () => { await tryLoadModel(); };
+
+async function tryLoadModel() {
+  const badge = document.getElementById('modelBadge');
+  try {
+    const candidates = [
+      { meta: 'model/bridgespeak_metadata.json', model: 'model/bridgespeak_tfjs/model.json' },
+      { meta: 'bridgespeak_metadata.json', model: 'bridgespeak_tfjs/model.json' }
+    ];
+    let loaded = false;
+    for (const c of candidates) {
+      try {
+        const metaRes = await fetch(c.meta);
+        if (!metaRes.ok) continue;
+        modelMetadata = await metaRes.json();
+        biLSTMModel = await tf.loadLayersModel(c.model);
+        loaded = true;
+        break;
+      } catch (_) {}
+    }
+    if (!loaded) throw new Error('Model files not found');
+    modelLoaded = true;
+    badge.textContent = '🧠 BiLSTM: Active';
+    badge.style.color = '#22c55e';
+    badge.style.borderColor = '#22c55e';
+    document.getElementById('statusBar').textContent =
+      'Fully offline · Vocab ' + Object.keys(modelMetadata.word2idx||{}).length +
+      ' · max_len ' + modelMetadata.max_seq_len +
+      ' · threshold ' + (modelMetadata.urgency_threshold || 0.55);
+  } catch (e) {
+    modelLoaded = false;
+    badge.textContent = '🧠 BiLSTM: Unavailable (rule-based fallback)';
+    badge.style.color = '#f59e0b';
+    console.warn('Model load failed, using rule-based classifier:', e);
+  }
+}
+
+function preprocess(text) {
+  const stop = new Set(modelMetadata?.stop_words || []);
+  const keep = new Set(modelMetadata?.keep_words || ['good','bad','not','want','need','help','no','yes']);
+  const lemma = { paining:'pain', pains:'pain', hurts:'hurt', hurting:'hurt', bleeding:'bleed', helping:'help', needing:'need', wanting:'want', breathing:'breathe', falling:'fall', feeling:'feel', calling:'call', thanks:'thank', hii:'hi' };
+  const vocab = modelMetadata?.word2idx || {};
+  // Only lemmatize words the model doesn't know, so e.g. "bleeding" stays a known token instead of becoming <UNK>
+  return text.toLowerCase().replace(/[^a-z\s]/g,'').split(/\s+/).filter(t => t && (keep.has(t) || !stop.has(t))).map(t => (vocab[t] !== undefined ? t : (lemma[t] || t)));
+}
+
+function encode(tokens) {
+  const w2i = modelMetadata.word2idx;
+  const maxLen = modelMetadata.max_seq_len || 12;
+  const ids = tokens.map(t => (w2i[t] !== undefined ? w2i[t] : 1));
+  while (ids.length < maxLen) ids.push(0);
+  return ids.slice(0, maxLen);
+}
+
+async function classifyWithBiLSTM(rawText) {
+  if (!modelLoaded || !biLSTMModel || !modelMetadata) return ruleBasedClassify(rawText);
+  try {
+    const tokens = preprocess(rawText);
+    const encoded = encode(tokens);
+    const tensor = tf.tensor2d([encoded], [1, modelMetadata.max_seq_len], 'int32');
+    const preds = biLSTMModel.predict(tensor);
+    let urgencyTensor, intentTensor;
+    if (Array.isArray(preds)) { [urgencyTensor, intentTensor] = preds; }
+    else { tensor.dispose(); return ruleBasedClassify(rawText); }
+    const urgencyProb = (await urgencyTensor.data())[0];
+    const intentProbs = Array.from(await intentTensor.data());
+    tensor.dispose(); urgencyTensor.dispose(); intentTensor.dispose();
+
+    const threshold = modelMetadata.urgency_threshold ?? 0.55;
+    let isUrgent = urgencyProb >= threshold;
+    const hasEmergency = tokens.some(t => EMERGENCY_KEYWORDS.has(t));
+    const hasMild = tokens.some(t => MILD_MODIFIERS.has(t));
+    // Fix false-urgent: require emergency evidence or very high confidence
+    if (isUrgent && !hasEmergency && urgencyProb < 0.85) isUrgent = false;
+    if (isUrgent && hasMild && !hasEmergency) isUrgent = false;
+    const ctx = document.getElementById('contextSelect').value;
+    if (ctx === 'emergency' && urgencyProb >= 0.45 && hasEmergency) isUrgent = true;
+    // Life-threatening words are always urgent: the model under-scores some (e.g. "gas leak") and can't judge
+    // words outside its vocabulary (e.g. "smoke"). Ambiguous words like "chest" are still left to the model.
+    const hasCritical = tokens.some(t => CRITICAL_KEYWORDS.has(t));
+    if (!isUrgent && hasCritical && !hasMild) isUrgent = true;
+
+    const urgencyLabel = isUrgent ? 'urgent' : 'not_urgent';
+    const urgencyConf = Math.round((isUrgent ? Math.max(urgencyProb, 0.5) : 1 - urgencyProb) * 100);
+    const intentIdx = intentProbs.indexOf(Math.max(...intentProbs));
+    let intentLabel = modelMetadata.intent_classes[intentIdx];
+    let intentConf = Math.round(intentProbs[intentIdx] * 100);
+    // When the model is unsure, a clear keyword ("thanks", "no", "fever", "fire") decides the intent
+    const kwIntent = keywordIntent(tokens);
+    if (kwIntent && kwIntent !== intentLabel && (intentConf < 70 || hasCritical)) {
+      intentLabel = kwIntent;
+      intentConf = Math.round(intentProbs[modelMetadata.intent_classes.indexOf(kwIntent)] * 100);
+    }
+    return { urgencyLabel, urgencyConf, intentLabel, intentConf, tokens, urgencyProb };
+  } catch (e) {
+    console.warn('BiLSTM inference failed:', e);
+    return ruleBasedClassify(rawText);
+  }
+}
+
+// Intent from unambiguous keywords, most serious category first (so "no fire exit" isn't small talk). null = no clear keyword.
+function keywordIntent(tokens) {
+  const any = list => tokens.some(t => list.includes(t));
+  if (any(['fire','smoke','flood','police','attack','accident','earthquake','gas','drowning','robbery','theft','danger'])) return 'emergency';
+  if (any(['pain','fever','medicine','doctor','hospital','bleed','bleeding','breathe','breathing','chest','heart','allergy','cough','headache','dizzy','ache','hurt'])) return 'medical';
+  if (any(['water','food','hungry','bathroom','toilet','chair','charger','phone','pen','paper','blanket','open','close'])) return 'request';
+  if (any(['hello','hi','hey','morning','bye','goodbye','thank','sorry','yes','no','agree','disagree','name','happy','sad','welcome'])) return 'social';
+  return null;
+}
+
+function ruleBasedClassify(rawText) {
+  const tokens = preprocess(rawText);
+  const hasEmergency = tokens.some(t => EMERGENCY_KEYWORDS.has(t));
+  const hasMild = tokens.some(t => MILD_MODIFIERS.has(t));
+  let urgencyLabel = (hasEmergency && !hasMild) ? 'urgent' : 'not_urgent';
+  const intentLabel = keywordIntent(tokens) || 'request';
+  return { urgencyLabel, urgencyConf: urgencyLabel==='urgent'?80:70, intentLabel, intentConf: 65, tokens, urgencyProb: urgencyLabel==='urgent'?0.8:0.2 };
+}
+
+function reconstructSentence(raw, ml) {
+  const tokens = ml.tokens || preprocess(raw);
+  const intent = ml.intentLabel;
+  const urgent = ml.urgencyLabel === 'urgent';
+  const ctx = document.getElementById('contextSelect').value;
+  const tokSet = new Set(tokens);
+  // Whole-word match (substring regexes matched "know" as "no", "visit" as "sit", "this" as "hi")
+  const has = (...words) => words.some(w => tokSet.has(w));
+  const words = tokens.filter(t => t !== '<PAD>' && t !== '<UNK>').join(' ');
+  function pick(group, keys) {
+    for (const k of keys) {
+      if (TEMPLATES[group] && TEMPLATES[group][k]) {
+        const arr = TEMPLATES[group][k];
+        return arr[Math.floor(Math.random() * arr.length)];
+      }
+    }
+    return null;
+  }
+  let sentence = null;
+  if (intent === 'emergency' || urgent) {
+    if (has('fire','smoke','burning')) sentence = pick('emergency', ['fire']);
+    else if (has('flood','rising','drowning')) sentence = pick('emergency', ['flood']);
+    else if (has('gas','leak')) sentence = pick('emergency', ['gas']);
+    else if (has('attack','threat','robbery','theft','unsafe','danger')) sentence = pick('emergency', ['attack']);
+    else if (has('accident','fell','fall','falling','hit')) sentence = pick('emergency', ['accident']);
+    else if (has('police')) sentence = pick('emergency', ['police']);
+    else if (has('ambulance')) sentence = pick('emergency', ['ambulance']);
+    else if (has('chest','heart')) sentence = pick('medical', ['urgent_chest']);
+    else if (has('breathe','breathing','cannot')) sentence = pick('medical', ['urgent_breathe']);
+    else if (has('bleed','bleeding','blood')) sentence = pick('medical', ['urgent_bleed']);
+    else if (has('unconscious')) sentence = pick('medical', ['urgent_unconscious']);
+    else if (has('seizure','shaking')) sentence = pick('medical', ['urgent_seizure']);
+    else sentence = intent === 'medical' ? pick('medical', ['urgent_general']) : pick('emergency', ['general']);
+  } else if (intent === 'medical') {
+    if (has('medicine','prescription','refill','medication')) sentence = pick('medical', ['medicine']);
+    else if (has('doctor','hospital','appointment','check','visit','dentist')) sentence = pick('medical', ['doctor']);
+    else if (has('mild','slight','little','small','low')) sentence = pick('medical', ['mild']) + (words ? ' (' + words + ')' : '');
+    else sentence = words ? 'I am not feeling well. I have ' + words + '.' : pick('medical', ['general']);
+  } else if (intent === 'request') {
+    if (has('water','drink','juice','thirsty')) sentence = pick('request', ['water']);
+    else if (has('food','hungry','eat')) sentence = pick('request', ['food']);
+    else if (has('bathroom','toilet','washroom')) sentence = pick('request', ['bathroom']);
+    else if (has('sit','chair')) sentence = pick('request', ['sit']);
+    else if (has('rest','sleep','tired')) sentence = pick('request', ['rest']);
+    else if (has('open')) sentence = pick('request', ['open']);
+    else if (has('close')) sentence = pick('request', ['close']);
+    else if (has('phone','charger')) sentence = pick('request', ['phone']);
+    else if (has('write','pen','paper')) sentence = pick('request', ['write']);
+    else if (has('appointment','schedule')) sentence = pick('request', ['appointment']);
+    else if (has('help')) sentence = pick('request', ['help']);
+    else sentence = words ? 'I need help with this, please: ' + words + '.' : pick('request', ['general']);
+  } else {
+    if (has('hello','hi','hey','morning')) sentence = pick('social', ['greet']);
+    else if (has('thank')) sentence = pick('social', ['thanks']);
+    else if (has('bye','goodbye','later')) sentence = pick('social', ['bye']);
+    else if (has('yes','agree')) sentence = pick('social', ['agree']);
+    else if (has('no','disagree')) sentence = pick('social', ['disagree']);
+    else if (has('wait','moment')) sentence = pick('social', ['wait']);
+    else if (has('sorry','excuse')) sentence = pick('social', ['sorry']);
+    else sentence = pick('social', ['general']);
+  }
+  if (ctx === 'office' && sentence && !urgent) {
+    sentence = sentence.replace(/^I need/, 'I would like').replace(/^Could I/, 'May I');
+  }
+  if (!sentence) {
+    sentence = words ? words.charAt(0).toUpperCase() + words.slice(1) + '.' : '…';
+  }
+  return sentence;
+}
+
+// ---- Hearing → deaf simplification (rule-based, offline) ----
+const FILLER_PATTERNS = [
+  /\b(um+|uh+|erm|hmm+)\b,?/gi,
+  /\b(you know|i mean|kind of|sort of|basically|actually|literally|honestly|obviously|really|just|very|quite|pretty much)\b,?/gi,
+  /\b(i think|i believe|i guess|i feel like|i suppose|it seems that|it seems like)\b,?\s*(that\s+)?/gi,
+  /\b(please note that|i would like to inform you that|i wanted to let you know that|i want to tell you that|let me tell you that|i would like to say that|as you may know|as i said)\b,?\s*/gi,
+  /^\s*(well|so|okay so|ok so|alright so|now then)\s*,\s*/gi
+];
+const POLITE_PATTERNS = [
+  [/\b(i was wondering if you could|would you be able to|would you mind|could you possibly|could you please|can you please|would you please|would you kindly|kindly)\b\s*/gi, 'please '],
+  [/\bit would be (great|nice|helpful|good) if you could\b\s*/gi, 'please '],
+  [/\byou are required to\b/gi, 'you must'],
+  [/\byou will need to\b/gi, 'you must'],
+  [/\bit is (necessary|important|essential) (that you|for you to)\b/gi, 'you must']
+];
+const PHRASE_SIMPLE = [
+  [/\bin order to\b/gi, 'to'], [/\bdue to the fact that\b/gi, 'because'], [/\bowing to the fact that\b/gi, 'because'],
+  [/\bat this point in time\b/gi, 'now'], [/\bat the present time\b/gi, 'now'], [/\bat this moment\b/gi, 'now'],
+  [/\bprior to\b/gi, 'before'], [/\bsubsequent to\b/gi, 'after'], [/\bas soon as possible\b/gi, 'soon'],
+  [/\bin the event that\b/gi, 'if'], [/\bin case of\b/gi, 'if there is'], [/\ba (large )?number of\b/gi, 'many'],
+  [/\bwith regard to\b/gi, 'about'], [/\bin regard to\b/gi, 'about'], [/\bwith respect to\b/gi, 'about'],
+  [/\bin addition( to that)?\b/gi, 'also'], [/\b(is|are|will be) able to\b/gi, 'can'], [/\b(is|are) unable to\b/gi, 'cannot'],
+  [/\bin the near future\b/gi, 'soon'], [/\bon a daily basis\b/gi, 'every day'], [/\bon a regular basis\b/gi, 'often'],
+  [/\bfor the purpose of\b/gi, 'for'], [/\bmake a decision\b/gi, 'decide'], [/\bgive consideration to\b/gi, 'think about'],
+  [/\bhypertension\b/gi, 'high blood pressure'],
+  [/\bhave a seat\b/gi, 'sit down'], [/\btake a seat\b/gi, 'sit down'], [/\bfill out\b/gi, 'fill in'],
+  [/\bget back to you\b/gi, 'reply to you'], [/\bfollow up\b/gi, 'check again'], [/\bpass away\b/gi, 'die']
+];
+const WORD_SIMPLE = {
+  approximately:'about', roughly:'about', regarding:'about', concerning:'about', assistance:'help', assist:'help',
+  facilitate:'help', utilize:'use', utilise:'use', purchase:'buy', commence:'start', initiate:'start', begin:'start',
+  terminate:'end', conclude:'end', sufficient:'enough', adequate:'enough', require:'need', requires:'needs',
+  required:'needed', obtain:'get', receive:'get', acquire:'get', subsequently:'then', therefore:'so', thus:'so',
+  however:'but', nevertheless:'but', additional:'more', numerous:'many', currently:'now', presently:'now',
+  immediately:'now', individual:'person', individuals:'people', inform:'tell', notify:'tell', indicate:'show',
+  demonstrate:'show', attempt:'try', endeavor:'try', endeavour:'try', residence:'home', beverage:'drink',
+  consume:'eat', physician:'doctor', medication:'medicine', medications:'medicines', administer:'give',
+  examination:'check-up', examine:'check', verify:'check', procedure:'treatment', discomfort:'pain',
+  ailment:'illness', anticipate:'expect', complete:'finish', completed:'finished', depart:'leave',
+  discontinue:'stop', cease:'stop', eliminate:'remove', equivalent:'same', frequently:'often', initial:'first',
+  locate:'find', modify:'change', alter:'change', objective:'goal', permit:'allow', possess:'have', proceed:'go',
+  provide:'give', remain:'stay', reside:'live', transmit:'send', accompany:'go with', evacuate:'leave', shortly:'soon',
+  commodity:'item', inquire:'ask', enquire:'ask', respond:'reply', comprehend:'understand',
+  diagnosis:'result', abdomen:'stomach', abdominal:'stomach', cardiac:'heart',
+  respiratory:'breathing', fracture:'broken bone', laceration:'cut', nauseous:'sick', nausea:'feeling sick',
+  ascertain:'find out', endeavoring:'trying', delighted:'happy', fortunately:'luckily'
+};
+const HEARING_ALERT_WORDS = new Set(['fire','emergency','evacuate','danger','dangerous','ambulance','police','urgent','immediately','now','stop','run','leave','hurry']);
+const KEYWORD_STOP = new Set(['please','will','would','could','should','also','okay','ok','yes','no','then','so','but','well',
+  'get','got','go','going','let','lets','make','made','take','one','thing','things','something','anything','like','want',
+  'need','must','can','cannot','tell','come','see','know','think','say','said','back','sure','right','good','fine','much','many']);
+
+function matchCase(src, repl) {
+  return src[0] === src[0].toUpperCase() ? repl.charAt(0).toUpperCase() + repl.slice(1) : repl;
+}
+
+function simplifyForDeaf(text) {
+  let s = ' ' + text.trim().replace(/\s+/g, ' ') + ' ';
+  s = s.replace(/\([^)]*\)/g, ' ');                       // drop side remarks in brackets
+  for (const re of FILLER_PATTERNS) s = s.replace(re, ' ');
+  // Tidy commas left behind by removed fillers ("need to, um, take" -> "need to take")
+  s = s.replace(/,(\s*,)+/g, ',').replace(/\b(to|and|the|a|your|my)\s*,\s*/gi, '$1 ');
+  for (const [re, rep] of POLITE_PATTERNS) s = s.replace(re, m => matchCase(m.trim(), rep));
+  for (const [re, rep] of PHRASE_SIMPLE) s = s.replace(re, m => matchCase(m, rep));
+  s = s.replace(/\b[A-Za-z]+\b/g, w => {
+    const r = WORD_SIMPLE[w.toLowerCase()];
+    return r ? matchCase(w, r) : w;
+  });
+  s = s.replace(/\s+/g, ' ').replace(/\s+([,.!?;:])/g, '$1').replace(/,\s*,/g, ',').trim();
+
+  // One idea per line: split sentences, then long sentences at clause joins
+  const sentences = [];
+  for (const part of s.split(/(?<=[.!?;])\s+/)) {
+    const clauses = part.split(/\s*[,;]\s*(?:and then|and|but|so|which|because)\s+|\s*;\s*/i);
+    for (let c of clauses) {
+      c = c.replace(/^[,;\s]+|[,;\s]+$/g, '').replace(/^(and|then)\s+/i, '').replace(/^(but|so),\s*/i, '$1 ');
+      if (!c || !/[a-z0-9]/i.test(c)) continue;
+      c = c.charAt(0).toUpperCase() + c.slice(1);
+      if (/^please\b/i.test(c)) c = c.replace(/\?$/, '.');  // "Please help me?" → "Please help me."
+      if (!/[.!?]$/.test(c)) c += '.';
+      sentences.push(c);
+    }
+  }
+  const simplified = sentences.join('\n') || text.trim();
+
+  // Key words: times, numbers and important content words
+  const lower = text.toLowerCase();
+  const stop = new Set([...(modelMetadata?.stop_words || []), ...KEYWORD_STOP]);
+  const keys = [];
+  const addKey = k => { if (k && !keys.some(x => x.toLowerCase() === k.toLowerCase())) keys.push(k); };
+  (text.match(/\b\d{1,2}(:\d{2})?\s?(am|pm|a\.m\.|p\.m\.)|\b\d{1,2}:\d{2}\b/gi) || []).forEach(t => addKey(t.toUpperCase().replace(/\s/g, ' ')));
+  (lower.match(/\b(today|tonight|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|afternoon|evening)\b/g) || []).forEach(addKey);
+  (simplified.toLowerCase().match(/\b[a-z][a-z'-]{2,}\b/g) || []).forEach(w => { if (!stop.has(w)) addKey(w); });
+  (text.match(/\b\d+(\.\d+)?\b/g) || []).forEach(n => { if (!keys.some(k => k.includes(n))) addKey(n); });
+
+  const tokens = new Set(lower.match(/[a-z]+/g) || []);
+  const isUrgent = ['fire','emergency','evacuate','danger','dangerous','ambulance','urgent','hurry'].some(w => tokens.has(w)) ||
+    (/\b(right now|immediately|get out|run)\b/.test(lower) && [...tokens].some(t => HEARING_ALERT_WORDS.has(t)));
+  return { text: simplified, keywords: keys.slice(0, 6), isUrgent };
+}
+
+function toHindi(english) {
+  const lower = english.toLowerCase();
+  for (const [en, hi] of Object.entries(HINDI_GLOSS)) {
+    if (lower.includes(en)) return hi + ' — ' + english;
+  }
+  return '🇮🇳 ' + english;
+}
+
+function toggleLang() {
+  hindiEnabled = !hindiEnabled;
+  const btn = document.getElementById('langToggle');
+  btn.classList.toggle('active', hindiEnabled);
+  btn.textContent = hindiEnabled ? '🌏 Hindi: ON' : '🌏 Hindi Output';
+}
+
+function clearSide(side) {
+  const id = side === 'deaf' ? 'deafMessages' : 'hearingMessages';
+  const container = document.getElementById(id);
+  container.innerHTML = '';
+  const empty = document.createElement('div');
+  empty.className = 'empty-state';
+  empty.id = side === 'deaf' ? 'deafEmpty' : 'hearingEmpty';
+  empty.innerHTML = side === 'deaf'
+    ? '<div class="empty-icon">⌨️</div><div class="empty-text">Type short keywords or phrases.<br/>The local BiLSTM model will classify urgency & intent and build a natural sentence.</div>'
+    : '<div class="empty-icon">💬</div><div class="empty-text">Type what the hearing person says.<br/>It will be simplified into short, clear text.</div>';
+  container.appendChild(empty);
+  if (side === 'deaf') conversationHistory = conversationHistory.filter(h => h.role !== 'deaf');
+  else conversationHistory = conversationHistory.filter(h => h.role !== 'hearing');
+}
+
+function handleKey(e, side) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); side === 'deaf' ? sendDeaf() : sendHearing(); }
+}
+
+function addMessage(containerId, type, content, label) {
+  const container = document.getElementById(containerId);
+  const empty = container.querySelector('.empty-state');
+  if (empty) empty.remove();
+  const msg = document.createElement('div');
+  msg.className = 'msg ' + type;
+  if (label) { const lbl = document.createElement('div'); lbl.className = 'msg-label'; lbl.textContent = label; msg.appendChild(lbl); }
+  if (content.isUrgent) {
+    const badge = document.createElement('div'); badge.className = 'urgent-badge'; badge.textContent = '⚠ Urgent';
+    msg.appendChild(badge); msg.classList.add('urgent');
+  }
+  const bubble = document.createElement('div'); bubble.className = 'msg-bubble'; bubble.textContent = content.text || content;
+  msg.appendChild(bubble);
+  if (content.keywords && content.keywords.length) {
+    const kw = document.createElement('div'); kw.className = 'msg-keywords';
+    for (const k of content.keywords) { const chip = document.createElement('span'); chip.textContent = k; kw.appendChild(chip); }
+    msg.appendChild(kw);
+  }
+  container.appendChild(msg);
+  if (content.hindi && hindiEnabled) {
+    const hindiMsg = document.createElement('div'); hindiMsg.className = 'msg msg-hindi';
+    const hBubble = document.createElement('div'); hBubble.className = 'msg-bubble'; hBubble.textContent = content.hindi;
+    hindiMsg.appendChild(hBubble); container.appendChild(hindiMsg);
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendDeaf() {
+  const input = document.getElementById('deafInput');
+  const raw = input.value.trim();
+  if (!raw) return;
+  input.value = '';
+  document.getElementById('deafSendBtn').disabled = true;
+  addMessage('deafMessages', 'msg-input-raw', { text: raw }, 'Your keywords');
+  const typing = document.getElementById('deafTyping');
+  typing.classList.add('visible');
+  try {
+    const ml = await classifyWithBiLSTM(raw);
+    addMessage('deafMessages', 'msg-ml-tag', {
+      text: '🧠 ' + (modelLoaded ? 'BiLSTM' : 'Rules') + ' → Urgency: ' + ml.urgencyLabel + ' (' + ml.urgencyConf + '%) · Intent: ' + ml.intentLabel + ' (' + ml.intentConf + '%)'
+    });
+    const english = reconstructSentence(raw, ml);
+    const isUrgent = ml.urgencyLabel === 'urgent';
+    const hindi = hindiEnabled ? toHindi(english) : '';
+    conversationHistory.push({ role: 'deaf', text: english });
+    addMessage('deafMessages', 'msg-output', { text: english, hindi, isUrgent }, 'BridgeSpeak says');
+  } catch (err) {
+    addMessage('deafMessages', 'msg-output', { text: '⚠ Error: ' + err.message }, 'Error');
+  }
+  typing.classList.remove('visible');
+  document.getElementById('deafSendBtn').disabled = false;
+  input.focus();
+}
+
+async function sendHearing() {
+  const input = document.getElementById('hearingInput');
+  const raw = input.value.trim();
+  if (!raw) return;
+  input.value = '';
+  document.getElementById('hearingSendBtn').disabled = true;
+  addMessage('hearingMessages', 'msg-hearing-input', { text: raw }, 'Hearing person said');
+  const typing = document.getElementById('hearingTyping');
+  typing.classList.add('visible');
+  await new Promise(r => setTimeout(r, 180));
+  try {
+    const { text: simplified, keywords, isUrgent } = simplifyForDeaf(raw);
+    const hindi = hindiEnabled ? toHindi(simplified) : '';
+    conversationHistory.push({ role: 'hearing', text: raw });
+    addMessage('hearingMessages', 'msg-hearing-output', { text: simplified, hindi, isUrgent, keywords }, 'Simplified for deaf user');
+  } catch (err) {
+    addMessage('hearingMessages', 'msg-hearing-output', { text: '⚠ Error: ' + err.message }, 'Error');
+  }
+  typing.classList.remove('visible');
+  document.getElementById('hearingSendBtn').disabled = false;
+  input.focus();
+}
+</script>
+</body>
+</html>
