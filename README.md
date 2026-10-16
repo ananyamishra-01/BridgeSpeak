@@ -72,3 +72,5 @@ python scripts/fix_tfjs_model.py model/bridgespeak_tfjs/model.json
 | Urgency loss weight 1.5| Prioritise correct urgency decisions         |
 | Expanded non-urgent data | Reduce false-positive urgent predictions  |
 
+##IoT Hardware
+This project is connected with a Linguistic Hand Glove, an IoT device which will track the sign languages and upload the output as the keywords in the file.
