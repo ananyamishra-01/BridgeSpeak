@@ -1,7 +1,7 @@
 # BridgeSpeak v2 — Local Model Only
 
 Assistive communication tool for deaf / mute users.  
-**Gemini API has been fully removed.** Everything runs offline with a local BiLSTM classifier + template-based sentence reconstruction.
+Everything runs offline with a local BiLSTM classifier + template-based sentence reconstruction.
 
 ## Project layout
 
@@ -19,7 +19,7 @@ bridgespeak/
 
 ## What changed
 
-1. **Gemini removed** – no API key, no network calls for generation.
+1. **No API** – no API key, no network calls for generation.
 2. **Dataset expanded** – `data/dataset.json` (548 labelled examples, heavily weighted toward `not_urgent` to fix false positives).
 3. **False-urgent bug fixed** – classification now requires:
    - model probability ≥ 0.55 **and**
