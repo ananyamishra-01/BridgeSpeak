@@ -72,6 +72,3 @@ python scripts/fix_tfjs_model.py model/bridgespeak_tfjs/model.json
 | Urgency loss weight 1.5| Prioritise correct urgency decisions         |
 | Expanded non-urgent data | Reduce false-positive urgent predictions  |
 
-## No IoT / hardware
-
-The project is pure web + local model. Any previous hardware hooks have been dropped; the UI is a dual-panel chat interface only.
