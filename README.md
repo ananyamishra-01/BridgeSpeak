@@ -1,4 +1,4 @@
-# BridgeSpeak v2 — Local Model Only
+# BridgeSpeak
 
 Assistive communication tool for deaf / mute users.  
 Everything runs offline with a local BiLSTM classifier + template-based sentence reconstruction.
